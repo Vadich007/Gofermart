@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -56,13 +56,12 @@ func (w *AccrualWorker) Run(ctx context.Context) {
 }
 
 func (w *AccrualWorker) processOrders(ctx context.Context) {
-	orders, err := w.orders.GetPending(ctx)
-	if err != nil {
-		log.Printf("accrual worker: get pending orders: %v", err)
-		return
-	}
+	for order, err := range w.orders.GetPending(ctx) {
+		if err != nil {
+			slog.Error("accrual worker: get pending orders", "err", err)
+			return
+		}
 
-	for _, order := range orders {
 		select {
 		case <-ctx.Done():
 			return
@@ -71,10 +70,10 @@ func (w *AccrualWorker) processOrders(ctx context.Context) {
 
 		retryAfter, err := w.processOrder(ctx, order)
 		if err != nil {
-			log.Printf("accrual worker: process order %s: %v", order.Number, err)
+			slog.Error("accrual worker: process order", "order", order.Number, "err", err)
 		}
 		if retryAfter > 0 {
-			log.Printf("accrual worker: rate limited, sleeping %v", retryAfter)
+			slog.Info("accrual worker: rate limited, sleeping", "duration", retryAfter)
 			select {
 			case <-ctx.Done():
 				return

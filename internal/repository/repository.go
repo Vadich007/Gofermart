@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"iter"
 
 	"github.com/Vadich007/Gofermart/internal/model"
 )
@@ -22,8 +23,8 @@ type UserRepository interface {
 
 type OrderRepository interface {
 	Create(ctx context.Context, userID int, number string) error
-	GetByUser(ctx context.Context, userID int) ([]*model.Order, error)
-	GetPending(ctx context.Context) ([]*model.Order, error)
+	GetByUser(ctx context.Context, userID int) iter.Seq2[*model.Order, error]
+	GetPending(ctx context.Context) iter.Seq2[*model.Order, error]
 	UpdateStatus(ctx context.Context, number string, status model.OrderStatus, accrual *float64) error
 }
 
@@ -32,5 +33,5 @@ type BalanceRepository interface {
 	Get(ctx context.Context, userID int) (*model.Balance, error)
 	AddAccrual(ctx context.Context, userID int, amount float64) error
 	Withdraw(ctx context.Context, userID int, orderNumber string, sum float64) error
-	GetWithdrawals(ctx context.Context, userID int) ([]*model.Withdrawal, error)
+	GetWithdrawals(ctx context.Context, userID int) iter.Seq2[*model.Withdrawal, error]
 }
