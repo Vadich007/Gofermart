@@ -2,10 +2,26 @@ package handler_test
 
 import (
 	"context"
+	"iter"
 
 	"github.com/Vadich007/Gofermart/internal/model"
 	"github.com/Vadich007/Gofermart/internal/repository"
 )
+
+func sliceToSeq[T any](items []T, err error) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		if err != nil {
+			var zero T
+			yield(zero, err)
+			return
+		}
+		for _, item := range items {
+			if !yield(item, nil) {
+				return
+			}
+		}
+	}
+}
 
 type mockUserRepo struct {
 	createFn     func(ctx context.Context, login, passwordHash string) (*model.User, error)
@@ -40,18 +56,20 @@ func (m *mockOrderRepo) Create(ctx context.Context, userID int, number string) e
 	return nil
 }
 
-func (m *mockOrderRepo) GetByUser(ctx context.Context, userID int) ([]*model.Order, error) {
+func (m *mockOrderRepo) GetByUser(ctx context.Context, userID int) iter.Seq2[*model.Order, error] {
 	if m.getByUserFn != nil {
-		return m.getByUserFn(ctx, userID)
+		orders, err := m.getByUserFn(ctx, userID)
+		return sliceToSeq(orders, err)
 	}
-	return nil, nil
+	return sliceToSeq[*model.Order](nil, nil)
 }
 
-func (m *mockOrderRepo) GetPending(ctx context.Context) ([]*model.Order, error) {
+func (m *mockOrderRepo) GetPending(ctx context.Context) iter.Seq2[*model.Order, error] {
 	if m.getPendingFn != nil {
-		return m.getPendingFn(ctx)
+		orders, err := m.getPendingFn(ctx)
+		return sliceToSeq(orders, err)
 	}
-	return nil, nil
+	return sliceToSeq[*model.Order](nil, nil)
 }
 
 func (m *mockOrderRepo) UpdateStatus(ctx context.Context, number string, status model.OrderStatus, accrual *float64) error {
@@ -97,9 +115,10 @@ func (m *mockBalanceRepo) Withdraw(ctx context.Context, userID int, orderNumber 
 	return nil
 }
 
-func (m *mockBalanceRepo) GetWithdrawals(ctx context.Context, userID int) ([]*model.Withdrawal, error) {
+func (m *mockBalanceRepo) GetWithdrawals(ctx context.Context, userID int) iter.Seq2[*model.Withdrawal, error] {
 	if m.getWithdrawalsFn != nil {
-		return m.getWithdrawalsFn(ctx, userID)
+		withdrawals, err := m.getWithdrawalsFn(ctx, userID)
+		return sliceToSeq(withdrawals, err)
 	}
-	return nil, nil
+	return sliceToSeq[*model.Withdrawal](nil, nil)
 }

@@ -2,8 +2,10 @@ package app
 
 import (
 	"context"
-	"log"
+	"errors"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/Vadich007/Gofermart/internal/config"
 	"github.com/Vadich007/Gofermart/internal/handler"
@@ -33,9 +35,23 @@ func Run(ctx context.Context, cfg *config.Config) error {
 		w := worker.New(orderRepo, balanceRepo, cfg.AccrualSystemAddress)
 		go w.Run(ctx)
 	} else {
-		log.Println("accrual system address not set, worker disabled")
+		slog.Info("accrual system address not set, worker disabled")
 	}
 
-	log.Printf("starting server on %s", cfg.RunAddress)
-	return http.ListenAndServe(cfg.RunAddress, h.Router())
+	srv := &http.Server{Addr: cfg.RunAddress, Handler: h.Router()}
+
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutCtx); err != nil {
+			slog.Error("graceful shutdown failed", "err", err)
+		}
+	}()
+
+	slog.Info("starting server", "addr", cfg.RunAddress)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }

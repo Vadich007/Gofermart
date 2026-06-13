@@ -27,5 +27,12 @@ func (s *BalanceService) Withdraw(ctx context.Context, userID int, orderNumber s
 }
 
 func (s *BalanceService) GetWithdrawals(ctx context.Context, userID int) ([]*model.Withdrawal, error) {
-	return s.balances.GetWithdrawals(ctx, userID)
+	var result []*model.Withdrawal
+	for w, err := range s.balances.GetWithdrawals(ctx, userID) {
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, w)
+	}
+	return result, nil
 }

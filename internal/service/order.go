@@ -23,7 +23,14 @@ func (s *OrderService) Upload(ctx context.Context, userID int, number string) er
 }
 
 func (s *OrderService) GetByUser(ctx context.Context, userID int) ([]*model.Order, error) {
-	return s.orders.GetByUser(ctx, userID)
+	var orders []*model.Order
+	for o, err := range s.orders.GetByUser(ctx, userID) {
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, nil
 }
 
 func isValidLuhn(number string) bool {
