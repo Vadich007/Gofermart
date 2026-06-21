@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"iter"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -42,47 +43,61 @@ func (r *OrderRepo) Create(ctx context.Context, userID int, number string) error
 	return nil
 }
 
-func (r *OrderRepo) GetByUser(ctx context.Context, userID int) ([]*model.Order, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT id, user_id, number, status, accrual, uploaded_at
-		 FROM orders WHERE user_id = $1 ORDER BY uploaded_at DESC`,
-		userID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var orders []*model.Order
-	for rows.Next() {
-		o := &model.Order{}
-		if err := rows.Scan(&o.ID, &o.UserID, &o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
-			return nil, err
+func (r *OrderRepo) GetByUser(ctx context.Context, userID int) iter.Seq2[*model.Order, error] {
+	return func(yield func(*model.Order, error) bool) {
+		rows, err := r.db.Query(ctx,
+			`SELECT id, user_id, number, status, accrual, uploaded_at
+			 FROM orders WHERE user_id = $1 ORDER BY uploaded_at DESC`,
+			userID,
+		)
+		if err != nil {
+			yield(nil, err)
+			return
 		}
-		orders = append(orders, o)
+		defer rows.Close()
+
+		for rows.Next() {
+			o := &model.Order{}
+			if err := rows.Scan(&o.ID, &o.UserID, &o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(o, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(nil, err)
+		}
 	}
-	return orders, rows.Err()
 }
 
-func (r *OrderRepo) GetPending(ctx context.Context) ([]*model.Order, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT id, user_id, number, status, accrual, uploaded_at
-		 FROM orders WHERE status IN ('NEW', 'PROCESSING')`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var orders []*model.Order
-	for rows.Next() {
-		o := &model.Order{}
-		if err := rows.Scan(&o.ID, &o.UserID, &o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
-			return nil, err
+func (r *OrderRepo) GetPending(ctx context.Context) iter.Seq2[*model.Order, error] {
+	return func(yield func(*model.Order, error) bool) {
+		rows, err := r.db.Query(ctx,
+			`SELECT id, user_id, number, status, accrual, uploaded_at
+			 FROM orders WHERE status IN ('NEW', 'PROCESSING')`,
+		)
+		if err != nil {
+			yield(nil, err)
+			return
 		}
-		orders = append(orders, o)
+		defer rows.Close()
+
+		for rows.Next() {
+			o := &model.Order{}
+			if err := rows.Scan(&o.ID, &o.UserID, &o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(o, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(nil, err)
+		}
 	}
-	return orders, rows.Err()
 }
 
 func (r *OrderRepo) UpdateStatus(ctx context.Context, number string, status model.OrderStatus, accrual *float64) error {

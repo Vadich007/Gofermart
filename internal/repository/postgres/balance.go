@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"iter"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -89,24 +90,31 @@ func (r *BalanceRepo) Withdraw(ctx context.Context, userID int, orderNumber stri
 	return tx.Commit(ctx)
 }
 
-func (r *BalanceRepo) GetWithdrawals(ctx context.Context, userID int) ([]*model.Withdrawal, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT user_id, order_number, sum, processed_at
-		 FROM withdrawals WHERE user_id = $1 ORDER BY processed_at DESC`,
-		userID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []*model.Withdrawal
-	for rows.Next() {
-		w := &model.Withdrawal{}
-		if err := rows.Scan(&w.UserID, &w.OrderNumber, &w.Sum, &w.ProcessedAt); err != nil {
-			return nil, err
+func (r *BalanceRepo) GetWithdrawals(ctx context.Context, userID int) iter.Seq2[*model.Withdrawal, error] {
+	return func(yield func(*model.Withdrawal, error) bool) {
+		rows, err := r.db.Query(ctx,
+			`SELECT user_id, order_number, sum, processed_at
+			 FROM withdrawals WHERE user_id = $1 ORDER BY processed_at DESC`,
+			userID,
+		)
+		if err != nil {
+			yield(nil, err)
+			return
 		}
-		result = append(result, w)
+		defer rows.Close()
+
+		for rows.Next() {
+			w := &model.Withdrawal{}
+			if err := rows.Scan(&w.UserID, &w.OrderNumber, &w.Sum, &w.ProcessedAt); err != nil {
+				yield(nil, err)
+				return
+			}
+			if !yield(w, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(nil, err)
+		}
 	}
-	return result, rows.Err()
 }
