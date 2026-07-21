@@ -2,50 +2,56 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
 
+	"github.com/golang-migrate/migrate/v4"
+	pgmigrate "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/Vadich007/Gofermart/migrations"
 )
 
-const schema = `
-CREATE TABLE IF NOT EXISTS users (
-	id            SERIAL PRIMARY KEY,
-	login         VARCHAR UNIQUE NOT NULL,
-	password_hash VARCHAR NOT NULL,
-	created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS orders (
-	id          SERIAL PRIMARY KEY,
-	user_id     INTEGER NOT NULL REFERENCES users(id),
-	number      VARCHAR UNIQUE NOT NULL,
-	status      VARCHAR NOT NULL DEFAULT 'NEW',
-	accrual     NUMERIC(15,4),
-	uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS balances (
-	user_id   INTEGER PRIMARY KEY REFERENCES users(id),
-	current   NUMERIC(15,4) NOT NULL DEFAULT 0,
-	withdrawn NUMERIC(15,4) NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS withdrawals (
-	id           SERIAL PRIMARY KEY,
-	user_id      INTEGER NOT NULL REFERENCES users(id),
-	order_number VARCHAR NOT NULL,
-	sum          NUMERIC(15,4) NOT NULL,
-	processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-`
-
 func NewPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	if err := runMigrations(dsn); err != nil {
+		return nil, fmt.Errorf("run migrations: %w", err)
+	}
+
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = pool.Exec(ctx, schema); err != nil {
-		pool.Close()
-		return nil, err
-	}
 	return pool, nil
+}
+
+func runMigrations(dsn string) error {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	driver, err := pgmigrate.WithInstance(db, &pgmigrate.Config{})
+	if err != nil {
+		return err
+	}
+
+	source, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		return err
+	}
+
+	m, err := migrate.NewWithInstance("iofs", source, "postgres", driver)
+	if err != nil {
+		return err
+	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+
+	return nil
 }

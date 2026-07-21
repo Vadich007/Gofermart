@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS balances (
+    user_id   INTEGER PRIMARY KEY REFERENCES users(id),
+    current   NUMERIC(15,4) NOT NULL DEFAULT 0,
+    withdrawn NUMERIC(15,4) NOT NULL DEFAULT 0
+);
